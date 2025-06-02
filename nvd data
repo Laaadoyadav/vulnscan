@@ -1,0 +1,59 @@
+import requests
+import time
+
+# --- CVE List ---
+cve_ids = [
+    "CVE-2021-44228",
+    "CVE-2022-22965",
+    "CVE-2023-23397"
+]
+
+# --- Function to Get CVE Details ---
+def get_cve_details(cve_id):
+    url = f"https://services.nvd.nist.gov/rest/json/cve/2.0?cveId={cve_id}"
+
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            if 'vulnerabilities' in data and data['vulnerabilities']:
+                vuln = data['vulnerabilities'][0]['cve']
+                desc = vuln['descriptions'][0]['value']
+                metrics = vuln.get('metrics', {})
+
+                # Extract CVSS v3 score if available
+                score = None
+                if 'cvssMetricV31' in metrics:
+                    score = metrics['cvssMetricV31'][0]['cvssData']['baseScore']
+                elif 'cvssMetricV30' in metrics:
+                    score = metrics['cvssMetricV30'][0]['cvssData']['baseScore']
+
+                return {
+                    "CVE_ID": cve_id,
+                    "Description": desc,
+                    "CVSS_v3_Score": score,
+                    "Published": vuln.get('published', 'N/A'),
+                    "Last_Modified": vuln.get('lastModified', 'N/A')
+                }
+            else:
+                return {"CVE_ID": cve_id, "Error": "No data found"}
+        else:
+            return {"CVE_ID": cve_id, "Error": f"HTTP {response.status_code}"}
+
+    except Exception as e:
+        return {"CVE_ID": cve_id, "Error": str(e)}
+
+# --- Loop Through the List ---
+all_cve_details = []
+
+for cve_id in cve_ids:
+    print(f"Fetching: {cve_id}")
+    details = get_cve_details(cve_id)
+    all_cve_details.append(details)
+    time.sleep(1.2)  # Respect API rate limit
+
+# --- Print the Results ---
+for entry in all_cve_details:
+    print("\n=======================")
+    for key, value in entry.items():
+        print(f"{key}: {value}")

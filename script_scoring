@@ -1,0 +1,79 @@
+import pandas as pd
+import requests
+import time
+
+# --- Configuration ---
+INPUT_FILE = 'example.xlsx'           # Your input Excel file
+CVE_COLUMN_NAME = 'CVE_ID'            # The name of the column containing CVE IDs
+OUTPUT_FILE = 'cve_details_output.xlsx'  # Output Excel file
+NVD_API_KEY = None  # Replace with your key if available
+
+
+# --- Step 1: Read CVE IDs ---
+def extract_cve_ids(file_path, cve_column_name='CVE_ID'):
+    df = pd.read_excel(file_path)
+    if cve_column_name not in df.columns:
+        raise ValueError(f"Column '{cve_column_name}' not found in Excel.")
+    cve_ids = df[cve_column_name].dropna().unique().tolist()
+    return cve_ids
+
+
+# --- Step 2: Fetch from NVD API ---
+def get_cve_details(cve_id, api_key=None):
+    headers = {"apiKey": api_key} if api_key else {}
+    url = f"https://services.nvd.nist.gov/rest/json/cve/2.0?cveId={cve_id}"
+
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if 'vulnerabilities' in data and data['vulnerabilities']:
+                vuln = data['vulnerabilities'][0]['cve']
+                desc = vuln['descriptions'][0]['value']
+                metrics = vuln.get('metrics', {})
+
+                score = None
+                if 'cvssMetricV31' in metrics:
+                    score = metrics['cvssMetricV31'][0]['cvssData']['baseScore']
+                elif 'cvssMetricV30' in metrics:
+                    score = metrics['cvssMetricV30'][0]['cvssData']['baseScore']
+
+                return {
+                    "CVE_ID": cve_id,
+                    "Description": desc,
+                    "CVSS_v3_Score": score,
+                    "Published": vuln.get('published', 'N/A'),
+                    "Last_Modified": vuln.get('lastModified', 'N/A')
+                }
+            else:
+                return {"CVE_ID": cve_id, "Error": "No data found"}
+        elif response.status_code == 429:
+            print("Rate limit hit. Sleeping for 30s...")
+            time.sleep(30)
+            return get_cve_details(cve_id, api_key)
+        else:
+            return {"CVE_ID": cve_id, "Error": f"HTTP {response.status_code}"}
+
+    except Exception as e:
+        return {"CVE_ID": cve_id, "Error": str(e)}
+
+
+# --- Step 3: Main Orchestration ---
+def main():
+    cve_ids = extract_cve_ids(INPUT_FILE, CVE_COLUMN_NAME)
+    print(f"Found {len(cve_ids)} CVE IDs.")
+
+    all_cve_details = []  # <- HERE
+
+    for idx, cve_id in enumerate(cve_ids):
+        print(f"[{idx+1}/{len(cve_ids)}] Fetching: {cve_id}")
+        detail = get_cve_details(cve_id, NVD_API_KEY)
+        all_cve_details.append(detail)
+        time.sleep(1.2)
+
+    pd.DataFrame(all_cve_details).to_excel(OUTPUT_FILE, index=False)
+    print("✅ Output saved.")
+
+
+if __name__ == "__main__":
+    main()

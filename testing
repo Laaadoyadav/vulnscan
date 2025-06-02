@@ -1,0 +1,98 @@
+import requests
+import time
+import pandas as pd
+df = pd.read_excel("Cve.xlsx")  # Adjust the filename/path as needed
+
+# Extract the 'cve_id' column into a list
+
+cve_ids = df['cve_id'].dropna().tolist()
+url = "https://www.cisa.gov/sites/default/files/csv/known_exploited_vulnerabilities.csv"
+response = requests.get(url)
+
+with open("known_exploited_vulnerabilities.csv", "wb") as f:
+    f.write(response.content)
+
+kev_df = pd.read_csv("known_exploited_vulnerabilities.csv")
+kev_df['cveID'] = kev_df['cveID'].str.lower()
+
+def get_epss_details(cve_id):
+    api_url = f"https://api.first.org/data/v1/epss?cve={cve_id}&pretty=true"
+    try:
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if 'data' in data and data['data']:
+            item = data['data'][0]
+            return {
+                'cve': item.get('cve', 'N/A'),
+                'epss': item.get('epss', 'N/A'),
+                'percentile': item.get('percentile', 'N/A'),
+                'date': item.get('date', 'N/A')
+            }
+        else:
+            return {
+                'cve': cve_id,
+                'epss': 'N/A',
+                'percentile': 'N/A',
+                'date': 'N/A'
+            }
+    except Exception as e:
+        return {
+            'cve': cve_id,
+            'epss': 'Error',
+            'percentile': 'Error',
+            'date': 'Error'
+        }
+
+def get_cve_details(cve_id):
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        cvss_data = data['vulnerabilities'][0]['cve']['metrics']['cvssMetricV31'][0]['cvssData']
+        return {
+            'Severity': cvss_data.get('baseSeverity', 'N/A'),
+            'Score': cvss_data.get('baseScore', 'N/A'),
+            'Vector': cvss_data.get('vectorString', 'N/A')
+        }
+    except Exception as e:
+        return {
+            'Severity': 'Error',
+            'Score': 'Error',
+            'Vector': 'Error'
+        }
+def cleanup():
+    import os
+    if os.path.exists("known_exploited_vulnerabilities.csv"):
+        os.remove("known_exploited_vulnerabilities.csv")
+    
+
+
+merged_data = []
+
+for cve_id in cve_ids:
+    cvss = get_cve_details(cve_id)
+    epss = get_epss_details(cve_id)
+
+    merged_row = {**epss, **cvss}  # EPS details has 'cve' key
+    merged_data.append(merged_row)
+    # time.sleep(1.2)
+
+# Export to Excel
+scan_df = pd.DataFrame(merged_data)
+
+
+# Step 1: Download and load KEV list from CISA
+
+
+
+scan_df['cve'] = scan_df['cve'].str.lower()
+scan_df['In_KEV'] = scan_df['cve'].isin(kev_df['cveID']).replace({True: 'Yes', False: 'No'})
+
+scan_df.to_excel("cve_combined_details.xlsx", index=False)
+
+print("Excel saved as 'cve_combined_details.xlsx'")
+cleanup()
+print("Cleanup complete. KEV file removed.")

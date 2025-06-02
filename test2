@@ -1,0 +1,89 @@
+import requests
+# api_url = "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2019-1010218"
+# response = requests.get(api_url)
+# print (response.json())
+
+# import requests
+
+# url = "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2019-1010218"
+# data = requests.get(url).json()
+
+# cvss_data = data['vulnerabilities'][0]['cve']['metrics']['cvssMetricV31'][0]['cvssData']
+# severity = cvss_data['baseSeverity']
+# score = cvss_data['baseScore']
+# vector = cvss_data['vectorString']
+
+# print (type(data))
+# print(f"Severity: {severity}, Score: {score}, Vector: {vector}")
+
+import requests
+
+def get_epss_details(cve_id):
+    api_url = f"https://api.first.org/data/v1/epss?cve={cve_id}&pretty=true"
+    try:
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()  # Raise HTTPError for bad responses
+        data = response.json()
+
+        # Check if data exists and is not empty
+        if 'data' in data and data['data']:
+            # There might be multiple entries; loop through each
+            for item in data['data']:
+                print(f"cve: {item.get('cve', 'N/A')}")
+                print(f"epss: {item.get('epss', 'N/A')}")
+                print(f"percentile: {item.get('percentile', 'N/A')}")
+                print(f"date: {item.get('date', 'N/A')}")
+                print("-----")
+        else:
+            print(f"No data found for CVE: {cve_id}")
+
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed for CVE {cve_id}: {e}")
+    except Exception as e:
+        print(f"Error processing CVE {cve_id}: {e}")
+
+def get_cve_details(cve_id):
+    print(f"Fetching: {cve_id}")
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
+    
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Raises an error for HTTP codes like 404, 500
+        data = response.json()
+
+        cvss_data = data['vulnerabilities'][0]['cve']['metrics']['cvssMetricV31'][0]['cvssData']
+        severity = cvss_data['baseSeverity']
+        score = cvss_data['baseScore']
+        vector = cvss_data['vectorString']
+        cve_detail = f"Severity: {severity}, Score: {score}, Vector: {vector}"
+
+    except requests.exceptions.RequestException as e:
+        cve_detail = f"Request error for {cve_id}: {e}"
+    except (KeyError, IndexError) as e:
+        cve_detail = f"Data parsing error for {cve_id}: {e}"
+    except Exception as e:
+        cve_detail = f"Unexpected error for {cve_id}: {e}"
+
+    return cve_detail
+
+
+# List of CVE IDs
+cve_ids = [
+    "CVE-2021-44228",
+    "CVE-2022-22965",
+    "CVE-2023-23397"
+]
+
+# Loop over each CVE ID and print the result
+for cve_id in cve_ids:
+    # print("this is the output for CVSS" )
+    cvss = get_cve_details(cve_id)
+    # print(result)
+    # print("\n===================================================")
+    # print("this is the output for EPSS")
+    epss = get_epss_details(cve_id)
+    # print(result1)
+    merged_row = {**cvss, **epss}
+    merged_data.append(merged_row)
+    time.sleep(1.2)
+    print(merged_data)
